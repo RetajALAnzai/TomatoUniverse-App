@@ -45,7 +45,8 @@ Through **Gamification**, **Documentation**, and **Journaling**, users can track
 
 ## 🧭 About the Project
 
-Developed as part of the **Apple Developer Academy program**.  
+Developed as part of the **Apple Developer Academy program <img width="16" height="21" alt="apple logo" src="https://github.com/user-attachments/assets/219cd7ec-b68d-4045-a92a-090e14c8c704" />
+**.  
 Our goal is to help users build productive habits and improve focus using gamification and the Pomodoro system.  
 
 > *Take back your time, One pwomodoro at a time..* 🍅  
