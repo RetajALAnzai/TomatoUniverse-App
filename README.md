@@ -1,6 +1,6 @@
 # 🍅 Tomato Universe
 
-**Tomato Universe** is a productivity and habit-tracking app inspired by the **Pomodoro system**, developed as part of the **Apple Developer Academy** 🍎.  
+**Tomato Universe** is a productivity and habit-tracking app inspired by the **Pomodoro system**, developed as part of the **Apple Developer Academy􀣺** .  
 The project was created by a group of academy students passionate about using technology to promote healthy habits, productivity, and self-improvement.
 
 ---
