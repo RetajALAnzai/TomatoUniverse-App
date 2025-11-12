@@ -1,24 +1,42 @@
-//
-//  ContentView.swift
-//  TomatoUniverseApp1
-//
-//  Created by Anas Alalwah on 04/11/2025.
-//
-
 import SwiftUI
 
 struct ContentView: View {
+    @StateObject private var vm = PomodoroViewModel()
+
     var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
+        TabView {
+            // Pomodoros
+            NavigationStack {
+                Pomodoros()
+                    .navigationTitle("Pomodoros")
+                    .navigationBarTitleDisplayMode(.inline)
+            }
+            .tabItem { Label("Pomodoros", systemImage: "timer") }
+
+            // Home
+            NavigationStack {
+                TUHomeView()
+                    .navigationTitle("The Universe")
+                    .navigationBarTitleDisplayMode(.inline)
+            }
+            .tabItem { Label("Home", systemImage: "house.fill") }
+
+            // To-Do
+            NavigationStack {
+                ToDoListView()
+                    .navigationTitle("To-Do List")
+                    .navigationBarTitleDisplayMode(.inline)
+            }
+            .tabItem { Label("To Do", systemImage: "checklist") }
         }
-        .padding()
+        .environmentObject(vm)
+        .accentColor(.white)
     }
 }
 
-#Preview {
+#if DEBUG
+#Preview("ContentView") {
     ContentView()
+        .environmentObject(PreviewMocks.vm)
 }
+#endif

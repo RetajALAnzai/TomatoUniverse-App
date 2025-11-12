@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSCameraUsageDescription </key>
+	<string>We need the camera to let you attach progress photos</string>
+	<key>Privacy - Camera Usage Description
+Privacy - Camera Usage Description
+Privacy - Camera Usage Description
+Privacy - Camera Usage Description</key>
+	<string></string>
+	<key>Privacy - Photo Library Additions Usage Descriptio</key>
+	<string></string>
+	<key>UIAppFonts</key>
+	<array>
+		<string>NanumPenScript-Regular.ttf</string>
+	</array>
+</dict>
+</plist>

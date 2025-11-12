@@ -1,127 +1,382 @@
 import SwiftUI
 import PhotosUI
+import UIKit
 
+// MARK: - Child layout constants (baseline-safe)
 private enum TUChildStyle {
-    static let topInset: CGFloat = 0      // للمسافة الخاصة بالـ safe area inset
-    static let gridTopSpace: CGFloat = 40  // ← المسافة بين التولبار وأول صف من المربعات (عدّلها)
+    static let topInset: CGFloat = 0
+    static let gridTopSpace: CGFloat = 40
 }
+
+// MARK: - Formatters
+private let childDateFormatter: DateFormatter = {
+    let f = DateFormatter()
+    f.dateStyle = .medium
+    f.timeStyle = .none
+    return f
+}()
 
 struct PomodoroChildView: View {
     @Binding var set: PomodoroSet
     let totalCount: Int
 
-    @State private var showTimer = false
-    @State private var showPhotos = false
+    // State
+    @State private var selectedIndex: Int? = nil
+    @State private var showWorkSheet = false
+    @State private var showBreakSheet = false
     @State private var showInfo = false
+    @State private var showPhotoManager = false
+
+    // Order-enforcement alert
+    @State private var showOrderAlert = false
+    @State private var allowedIndexHint: Int = 0
+
+    // Photos (work/break & manager)
+    @State private var showLibrary = false
+    @State private var librarySelection: PhotosPickerItem? = nil
+    @State private var showCamera = false
+
+    // MARK: - Harvest (new)
+    @State private var showHarvestBanner = false     // إظهار بانر Collect
+    @State private var harvestedThisSession = false  // حماية إضافية داخل الجلسة فقط
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 5)
+
+    // First tomato that is not done yet (0-based)
+    private var firstPendingIdx: Int {
+        self.set.items.firstIndex(where: { $0.state != .done }) ?? (self.set.items.count - 1)
+    }
+
+    // MARK: - Harvest Persistence Key
+    private var harvestClaimKey: String {
+        // يخزن حالة الحصاد لهذا القسم فقط (يعتمد على set.id)
+        "TU.harvest.claimed.\(set.id.uuidString)"
+    }
+
+    private func isHarvestClaimed() -> Bool {
+        UserDefaults.standard.bool(forKey: harvestClaimKey)
+    }
+
+    private func markHarvestClaimed() {
+        UserDefaults.standard.set(true, forKey: harvestClaimKey)
+    }
+
+    private func allTomatoesDone() -> Bool {
+        set.items.filter { $0.state == .done }.count >= totalCount
+    }
+
+    private func checkAndShowHarvest() {
+        // يظهر البانر فقط إذا اكتملت الـ50 ولم تُحصَد مسبقًا
+        if allTomatoesDone() && !isHarvestClaimed() && !harvestedThisSession {
+            withAnimation { showHarvestBanner = true }
+        }
+    }
 
     var body: some View {
         NavigationStack {
             ZStack {
-                Image(UIK.bg).resizable().scaledToFill().ignoresSafeArea()
+                Image(UIK.bg)
+                    .resizable()
+                    .scaledToFill()
+                    .ignoresSafeArea()
 
-                VStack(spacing: 14) {
+                VStack(spacing: 5) {
                     Text(set.title)
                         .font(.title3.bold())
                         .foregroundColor(.white)
                         .padding(.top, 10)
 
-                    ScrollView {
-                        // ✅ المسافة الإضافية بين التولبار والشبكة
-                        Spacer().frame(height: TUChildStyle.gridTopSpace)
+                    // Centered Target date + Goal (vertical style)
+                    if set.targetDate != nil || (set.targetNote != nil && !(set.targetNote ?? "").isEmpty) {
+                        HStack(spacing: 30) {
+                            if let d = set.targetDate {
+                                VStack(spacing: 4) {
+                                    Image(systemName: "calendar.circle.fill")
+                                        .font(.title3)
+                                        .foregroundStyle(.white.opacity(0.9))
+                                    Text(childDateFormatter.string(from: d))
+                                        .font(.footnote)
+                                        .foregroundColor(.white.opacity(0.9))
+                                        .multilineTextAlignment(.center)
+                                        .lineLimit(2)
+                                        .minimumScaleFactor(0.8)
+                                }
+                                .frame(maxWidth: .infinity)
+                            }
 
-                        LazyVGrid(columns: columns, spacing: 10) {
-                            ForEach(set.items) { item in
-                                cell(for: item)
+                            if let note = set.targetNote, !note.isEmpty {
+                                VStack(spacing: 4) {
+                                    Image(systemName: "target")
+                                        .font(.title3)
+                                        .foregroundStyle(.white.opacity(0.9))
+                                    Text(note)
+                                        .font(.footnote)
+                                        .foregroundColor(.white.opacity(0.9))
+                                        .multilineTextAlignment(.center)
+                                        .lineLimit(2)
+                                        .minimumScaleFactor(0.8)
+                                }
+                                .frame(maxWidth: .infinity)
                             }
                         }
-                        .padding(.horizontal, 14)
-                        .padding(.bottom, 20)
+                        .padding(.horizontal, 20)
+                        .padding(.top, 4)
                     }
 
-                    HStack(spacing: 12) {
-                        Button {
-                            showTimer = true
-                        } label: {
-                            Label("Start Focus", systemImage: "timer")
-                                .padding(.horizontal, 16).padding(.vertical, 10)
-                                .background(.ultraThinMaterial)
-                                .clipShape(Capsule())
-                                .foregroundColor(.white)
-                        }
+                    ScrollView {
+                        Spacer().frame(height: TUChildStyle.gridTopSpace)
 
-                        Button {
-                            showPhotos = true
-                        } label: {
-                            Label("Manage Photos", systemImage: "photo.on.rectangle.angled")
-                                .padding(.horizontal, 16).padding(.vertical, 10)
-                                .background(.ultraThinMaterial)
-                                .clipShape(Capsule())
-                                .foregroundColor(.white)
+                        LazyVGrid(columns: columns, spacing: 12) {
+                            ForEach(set.items.indices, id: \.self) { idx in
+                                cell(for: set.items[idx])
+                                    .contentShape(Rectangle())
+                                    .onTapGesture {
+                                        if set.items[idx].state == .done {
+                                            // فتح مدير الصور للمربعات المكتملة
+                                            selectedIndex = idx
+                                            showPhotoManager = true
+                                        } else if idx == firstPendingIdx {
+                                            // فتح ورقة عمل 25 دقيقة للمربع المسموح
+                                            selectedIndex = idx
+                                            showWorkSheet = true
+                                        } else {
+                                            // تنبيه الالتزام بالترتيب
+                                            allowedIndexHint = (firstPendingIdx < set.items.count)
+                                                ? set.items[firstPendingIdx].id
+                                                : set.items.last?.id ?? 1
+                                            showOrderAlert = true
+                                        }
+                                    }
+                            }
                         }
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 30)
                     }
-                    .padding(.bottom, 10)
+                }
+                .padding(.top, TUChildStyle.topInset)
+
+                // MARK: - Harvest Banner (new)
+                if showHarvestBanner {
+                    VStack {
+                        Spacer()
+                        HStack(spacing: 12) {
+                            Image(systemName: "leaf.fill")
+                                .imageScale(.large)
+
+                            Text("Harvest a Tomato")
+                                .font(.headline)
+
+                            Spacer()
+
+                            Button {
+                                // منع الدبل كاونت
+                                harvestedThisSession = true
+                                markHarvestClaimed()
+
+                                // إشعار للهوم لزيادة العداد
+                                NotificationCenter.default.post(name: .TUHarvestedTomatoAdded, object: nil)
+
+                                withAnimation { showHarvestBanner = false }
+
+                                #if os(iOS)
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                #endif
+                            } label: {
+                                Text("Collect")
+                                    .font(.subheadline.weight(.semibold))
+                                    .padding(.horizontal, 14).padding(.vertical, 8)
+                                    .background(.ultraThinMaterial)
+                                    .clipShape(Capsule())
+                            }
+                        }
+                        .padding(14)
+                        .background(.ultraThinMaterial)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.white.opacity(0.25), lineWidth: 1))
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 16)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .shadow(radius: 10, y: 6)
+                    }
+                    .ignoresSafeArea(edges: .bottom)
                 }
             }
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(.clear, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
+
+            // Toolbar
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showInfo = true } label: {
                         Image(systemName: "exclamationmark.circle")
-                            .font(.title2)
-                            .foregroundColor(.white)
-                            .padding(.trailing, 0)
+                            .font(.title3)
+                            .foregroundColor(.white.opacity(0.9))
                     }
                 }
             }
             .sheet(isPresented: $showInfo) {
-                InfoSheetView()
-                    .presentationDetents([.medium, .large])
+                VStack(spacing: 20) {
+                    Capsule()
+                        .fill(Color.secondary.opacity(0.4))
+                        .frame(width: 44, height: 5)
+                        .padding(.top, 8)
+
+                    Text("Quick guide:\n\nTap the allowed square to start a 25-minute Pomodoro. After finishing, you’ll get a 5-minute break sheet with photo options. You must progress in order; you can’t open later squares before completing the current one.")
+                        .multilineTextAlignment(.center)
+                        .padding()
+
+                    Spacer(minLength: 10)
+
+                    Button("Close") { showInfo = false }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.blue)
+                        .padding(.bottom, 20)
+                }
+                .padding(20)
+                .presentationDetents([.fraction(0.4), .medium])
             }
-            .sheet(isPresented: $showTimer) {
-                PomodoroTimerView(title: set.title)
-                    .presentationDetents([.medium, .large])
+
+            // Alert for order enforcement
+            .alert("Complete in order", isPresented: $showOrderAlert) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text("You can only open Tomato #\(allowedIndexHint) now. Finish it first to proceed.")
             }
-            .sheet(isPresented: $showPhotos) {
-                PhotoManagerSheet()
+
+            // 25-minute work sheet
+            .sheet(isPresented: $showWorkSheet) {
+                if let idx = selectedIndex {
+                    PomodoroWorkSheetView(
+                        title: "Tomato #\(set.items[idx].id)",
+                        initialSeconds: 25 * 60,
+                        onResetClearDone: {
+                            if set.items[idx].state == .done { set.items[idx].state = .available }
+                        },
+                        onMarkDone: {
+                            withAnimation(.spring) { set.items[idx].state = .done }
+                            // تحقق من الحصاد
+                            checkAndShowHarvest()
+
+                            showWorkSheet = false
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { showBreakSheet = true }
+                        },
+                        onAutoComplete: {
+                            withAnimation(.spring) { set.items[idx].state = .done }
+                            // تحقق من الحصاد
+                            checkAndShowHarvest()
+
+                            showWorkSheet = false
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { showBreakSheet = true }
+                        },
+                        onClose: { showWorkSheet = false }
+                    )
+                }
+            }
+
+            // 5-minute break sheet
+            .sheet(isPresented: $showBreakSheet) {
+                if let idx = selectedIndex {
+                    PomodoroBreakSheetView(
+                        title: "5-minute break",
+                        initialSeconds: 5 * 60,
+                        onPickFromLibrary: { showLibrary = true },
+                        onOpenCamera: { showCamera = true },
+                        onNext25: {
+                            showBreakSheet = false
+                            let next = min(idx + 1, set.items.count - 1)
+                            selectedIndex = next
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { showWorkSheet = true }
+                        },
+                        onClose: { showBreakSheet = false }
+                    )
+                    .photosPicker(isPresented: $showLibrary, selection: $librarySelection, matching: .images)
+                    .onChange(of: librarySelection) { _, _ in
+                        Task { await loadPickedPhotoToCurrentItem() }
+                    }
+                    .sheet(isPresented: $showCamera) {
+                        CameraPickerView { img in
+                            if let data = img?.jpegData(compressionQuality: 0.9),
+                               let sIdx = selectedIndex {
+                                set.items[sIdx].photoData = data
+                            }
+                            showCamera = false
+                        }
+                    }
+                }
+            }
+
+            // Photo manager for completed squares
+            .sheet(isPresented: $showPhotoManager) {
+                if let idx = selectedIndex {
+                    PhotoManageSheetView(
+                        imageData: set.items[idx].photoData,
+                        title: "Tomato #\(set.items[idx].id)",
+                        onPickFromLibrary: { showLibrary = true },
+                        onOpenCamera: { showCamera = true },
+                        onDelete: {
+                            set.items[idx].photoData = nil
+                        },
+                        onRestart25: {
+                            set.items[idx].state = .available
+                            showPhotoManager = false
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                                showWorkSheet = true
+                            }
+                        },
+                        onClose: { showPhotoManager = false }
+                    )
+                    .photosPicker(isPresented: $showLibrary, selection: $librarySelection, matching: .images)
+                    .onChange(of: librarySelection) { _, _ in
+                        Task { await loadPickedPhotoToCurrentItem() }
+                    }
+                    .sheet(isPresented: $showCamera) {
+                        CameraPickerView { img in
+                            if let data = img?.jpegData(compressionQuality: 0.9),
+                               let sIdx = selectedIndex {
+                                set.items[sIdx].photoData = data
+                            }
+                            showCamera = false
+                        }
+                    }
                     .presentationDetents([.medium, .large])
+                }
             }
         }
-        // يمنع المربعات من الالتصاق بالتولبار عند عدم وجود سكرول
-        .safeAreaInset(edge: .top) {
-            Color.clear.frame(height: TUChildStyle.topInset)
+        .onAppear {
+            // لو كل الـ50 منتهية مسبقًا وما تحصدت، يظهر البانر
+            checkAndShowHarvest()
         }
     }
 
-    // MARK: - خلية المربع
+    // MARK: - Cell
     @ViewBuilder
     private func cell(for item: TomatoItem) -> some View {
-        let isCurrent = (item.id == set.currentIndex)
-        let bg: Color = {
-            switch item.state {
-            case .locked:    return .white.opacity(0.10)
-            case .available: return isCurrent ? .white.opacity(0.28) : .white.opacity(0.18)
-            case .done:      return .green.opacity(0.35)
-            }
-        }()
+        let corner: CGFloat = 18
 
         ZStack {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(bg)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(.white.opacity(0.18), lineWidth: 1)
-                )
+            GeometryReader { geo in
+                let w = geo.size.width
+                if let img = uiImage(from: item.photoData) {
+                    Image(uiImage: img)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: w, height: UIK.childCellHeight)
+                        .clipped()
+                } else {
+                    Color.clear
+                        .frame(width: w, height: UIK.childCellHeight)
+                }
+            }
+            .frame(height: UIK.childCellHeight)
+            .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
 
-            Image("tomato")
+            Image(UIK.icon)
                 .resizable()
                 .scaledToFit()
-                .frame(height: UIK.childCellHeight * 1)
+                .frame(height: UIK.childCellHeight)
                 .colorMultiply(tomatoColor(for: item.id))
                 .shadow(radius: 2, y: 1)
+                .opacity(item.state == .locked ? 0.35 : 1.0)
 
             Text("\(item.id)")
                 .font(.headline)
@@ -132,73 +387,111 @@ struct PomodoroChildView: View {
         }
         .frame(height: UIK.childCellHeight)
         .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: corner, style: .continuous)
+                .fill(Color.white.opacity(0.12).blendMode(.multiply))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: corner, style: .continuous)
+                .stroke(Color.white.opacity(0.18), lineWidth: 1)
+        )
         .clipped()
-        .contentShape(Rectangle())
-        .onTapGesture { handleTap(item.id) }
+        .overlay(alignment: .topTrailing) {
+            if item.state == .done {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.green)
+                    .shadow(radius: 2)
+                    .padding(6)
+            }
+        }
     }
 
+    // MARK: - Color
     private func tomatoColor(for index: Int) -> Color {
         let t = Double(index - 1) / Double(max(totalCount - 1, 1))
-        let hue = 0.33 * (1.0 - t)
+        let hue = 0.38 * (1.0 - t)
         let saturation = 0.95
-        let brightness = 0.70 + 0.25 * t
+        let brightness = 0.95 + 0.10 * t
         return Color(hue: hue, saturation: saturation, brightness: brightness)
     }
 
-    private func handleTap(_ id: Int) {
-        guard id == set.currentIndex else { return }
-        if let idx = set.items.firstIndex(where: { $0.id == id }) {
-            set.items[idx].state = .done
-        }
-        let next = id + 1
-        if let nextIdx = set.items.firstIndex(where: { $0.id == next }) {
-            set.items[nextIdx].state = .available
-            set.currentIndex = next
-        }
+    // MARK: - Photo utils
+    private func loadPickedPhotoToCurrentItem() async {
+        guard let item = librarySelection else { return }
+        do {
+            if let data = try await item.loadTransferable(type: Data.self),
+               let idx = selectedIndex {
+                set.items[idx].photoData = data
+            }
+        } catch { }
+        librarySelection = nil
+    }
+
+    private func uiImage(from data: Data?) -> UIImage? {
+        guard let data else { return nil }
+        return UIImage(data: data)
     }
 }
 
-// MARK: - شاشة الشرح
-private struct InfoSheetView: View {
+// MARK: - Photo Manager Sheet
+private struct PhotoManageSheetView: View {
+    let imageData: Data?
+    let title: String
+    let onPickFromLibrary: () -> Void
+    let onOpenCamera: () -> Void
+    let onDelete: () -> Void
+    let onRestart25: () -> Void
+    let onClose: () -> Void
+
     var body: some View {
-        VStack(spacing: 16) {
-            Capsule()
-                .fill(Color.secondary.opacity(0.3))
-                .frame(width: 48, height: 5)
-                .padding(.top, 8)
+        NavigationStack {
+            VStack(spacing: 16) {
+                if let data = imageData, let ui = UIImage(data: data) {
+                    Image(uiImage: ui)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxWidth: .infinity)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(.white.opacity(0.15), lineWidth: 1)
+                        )
+                        .padding(.horizontal)
+                } else {
+                    Text("No photo yet")
+                        .foregroundColor(.secondary)
+                        .padding(.top, 40)
+                }
 
-            Text("About this Set")
-                .font(.title3.bold())
-                .padding(.top, 4)
-
-            // ✏️ غيّر النص هنا
-            Text("اكتب هنا شرح المجموعة: الهدف منها، طريقة الاستخدام، وأي ملاحظات مهمة.")
-                .multilineTextAlignment(.center)
-                .padding()
-                .foregroundColor(.primary)
-
-            Spacer()
+                VStack(spacing: 10) {
+                    Button("Change from Library") { onPickFromLibrary() }
+                        .buttonStyle(.borderedProminent)
+                    Button("Take a Photo") { onOpenCamera() }
+                        .buttonStyle(.bordered)
+                    Button("Delete Photo") { onDelete() }
+                        .buttonStyle(.bordered)
+                        .tint(.red)
+                    Button("Restart 25 minutes") { onRestart25() }
+                        .buttonStyle(.borderedProminent)
+                }
+                .padding(.horizontal)
+                Spacer(minLength: 10)
+            }
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Close") { onClose() }
+                }
+            }
         }
-        .padding(20)
     }
 }
 
-// MARK: - شيت الصور المؤقت
-private struct PhotoManagerSheet: View {
-    var body: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "photo.on.rectangle.angled").font(.largeTitle)
-            Text("Photos coming soon")
-            Text("Temporary sheet to keep the build green.")
-                .font(.footnote).foregroundColor(.secondary)
-        }
-        .padding()
-    }
-}
-
-#if DEBUG
+// MARK: - Preview
 #Preview("PomodoroChildView") {
-    let set = PreviewMocks.vm.sets.first ?? .make(title: "Sample", total: 50)
-    return PomodoroChildView(set: .constant(set), totalCount: set.items.count)
+    let items = (1...50).map { TomatoItem(id: $0, state: .available) }
+    let demoSet = PomodoroSet(id: UUID(), title: "Pomodoro Set", items: items, currentIndex: 1)
+    PomodoroChildView(set: .constant(demoSet), totalCount: 50)
 }
-#endif

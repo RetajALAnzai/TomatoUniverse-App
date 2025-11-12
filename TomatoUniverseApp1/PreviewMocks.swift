@@ -1,18 +1,15 @@
-//
-//  PreviewMocks.swift
-//  TomatoUniverseApp1
-//
-//  Created by Anas Alalwah on 08/11/2025.
-//
-
+#if DEBUG
 import SwiftUI
 
-struct PreviewMocks: View {
-    var body: some View {
-        Text(/*@START_MENU_TOKEN@*/"Hello, World!"/*@END_MENU_TOKEN@*/)
-    }
+enum PreviewMocks {
+    static let vm: PomodoroViewModel = {
+        let vm = PomodoroViewModel()
+        // نكتب فوق المحفوظات لأجل المعاينة فقط
+        vm.sets = [
+            .make(title: "Spanish", targetNote: "Daily conversation", targetDate: .now.addingTimeInterval(TimeInterval(3*86400))),
+            .make(title: "Reading", targetNote: "Finish 200 pages", targetDate: .now.addingTimeInterval(TimeInterval(10*86400)))
+        ]
+        return vm
+    }()
 }
-
-#Preview {
-    PreviewMocks()
-}
+#endif

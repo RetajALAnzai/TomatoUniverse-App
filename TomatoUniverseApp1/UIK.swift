@@ -1,8 +1,17 @@
-//
-//  UIK.swift
-//  TomatoUniverseApp1
-//
-//  Created by Anas Alalwah on 07/11/2025.
-//
+import SwiftUI
 
-import Foundation
+// MARK: - Global UI constants
+enum UIK {
+    static let bg = "bg2"
+    static let icon = "tomato"
+    static var tomatoScale: CGFloat = 0.80
+    static var gridSpacing: CGFloat = 14
+    static var parentIconSize: CGFloat = 56
+    static var childCellHeight: CGFloat = 72
+        static let topSpacer: CGFloat = 120
+    
+   
+        static let childTopInset: CGFloat = 50  // ← غيّرها للي يناسبك
+
+
+}
