@@ -51,7 +51,7 @@ Our goal is to help users build productive habits and improve focus using gamifi
 
 ---
 
-## 📅 Year  
+## Year  
 2025  
 
 ---
